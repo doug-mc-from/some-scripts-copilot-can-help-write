@@ -1,6 +1,13 @@
 # navigate to C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest and find all files matching eqlog_*.txt
+# these files will not be directly in the root directory, they will be in subdirectories 
 $logDirectory = "C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest"
-$logFiles = Get-ChildItem -Path $logDirectory -Filter "eqlog_*.txt"
+$logFiles = Get-ChildItem -Path $logDirectory -Recurse -Filter "eqlog_*.txt"
+
+# print out list of log files found
+Write-Output "Found log files:"
+foreach ($logFile in $logFiles) {
+    Write-Output $logFile.FullName
+}
 
 # start parsing the logs, matching on patterns:
 # "you have entered" - indicates zone change
@@ -70,11 +77,12 @@ foreach ($charName in $xpData.Keys) {
     foreach ($serverName in $xpData[$charName].Keys) {
         Write-Output "Server: $serverName"
         foreach ($zone in $xpData[$charName][$serverName].Keys) {
-            Write-Output "  Zone: $zone"
+            Write-Output "  "
             foreach ($level in $xpData[$charName][$serverName][$zone].Keys) {
                 $xpGains = $xpData[$charName][$serverName][$zone][$level]
                 $averageXpGain = ($xpGains | Measure-Object -Average).Average
-                Write-Output "    Level: $level - Average XP Gain per Event: $([math]::Round($averageXpGain, 3))%"
+                # output zone level avg xp gain rounded to 3 decimal places in a format that can be easily copy pasted into a Google sheet document.
+                Write-Output "Zone: $zone, Level: $level, Average XP Gain: {0:N3}%" -f $averageXpGain
             }
         }
     }
