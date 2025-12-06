@@ -18,74 +18,66 @@ $logFiles = Get-ChildItem -Path $logDirectory -Filter "eqlog_*.txt"
 # Identify the best zones for XP gain per hour for each character on each server.
 # Output a summary of the amount of xp gain per zone per level.
 # Ignore xp rates with a bonus, we only want base xp rates.
+# We do not care about totals of xp gain, we only care about the xp gain from a single xp gain event. This will help identify the best zones for xp gain,
+# regardless of how long the character spent in that zone in the past.
 
-$xpData = @{}
+$xpData = @{}   
+
 foreach ($logFile in $logFiles) {
     $fileName = $logFile.Name
     # Extract character name and server from filename
-    if ($fileName -match "^eqlog_(.+?)_(.+?)(_\d{8}_\d{6})?\.txt$") {
+    if ($fileName -match "eqlog_(.+?)_(.+?)(_\d+)?\.txt") {
         $charName = $matches[1]
         $serverName = $matches[2]
 
-        # Initialize character data structure if not already present
         if (-not $xpData.ContainsKey($charName)) {
-            $xpData[$charName] = @{
-                Server = $serverName
-                Levels = @{}
-            }
+            $xpData[$charName] = @{}
+        }
+        if (-not $xpData[$charName].ContainsKey($serverName)) {
+            $xpData[$charName][$serverName] = @{}
         }
 
         $currentZone = ""
         $currentLevel = 1
-        $zoneXpData = @{}
 
-        # Read the log file line by line
-        Get-Content -Path $logFile.FullName | ForEach-Object {
-            $line = $_
-
+        $logLines = Get-Content -Path $logFile.FullName
+        foreach ($line in $logLines) {
             # Check for zone change
-            if ($line -match "you have entered (.+)$") {
+            if ($line -match "you have entered (.+)") {
                 $currentZone = $matches[1]
-                if (-not $zoneXpData.ContainsKey($currentZone)) {
-                    $zoneXpData[$currentZone] = @{
-                        TotalXp = 0
-                        Entries = 0
-                    }
-                }
             }
-
             # Check for experience gain without bonus
-            if ($line -match "You gain (party )?experience! \((\d+\.\d+)%\)") {
-                $xpPercent = [double]$matches[2]
-                # Assuming a base XP value for calculation, e.g., 1000 XP per percent
-                $baseXpValue = 1000
-                $xpGained = $xpPercent * $baseXpValue / 100
-
-                if ($currentZone -ne "") {
-                    $zoneXpData[$currentZone].TotalXp += $xpGained
-                    $zoneXpData[$currentZone].Entries += 1
+            elseif ($line -match "You gain (party )?experience! \((\d+\.\d+)%\)") {
+                $xpGain = [double]$matches[2]
+                if (-not $xpData[$charName][$serverName].ContainsKey($currentZone)) {
+                    $xpData[$charName][$serverName][$currentZone] = @{}
                 }
+                if (-not $xpData[$charName][$serverName][$currentZone].ContainsKey($currentLevel)) {
+                    $xpData[$charName][$serverName][$currentZone][$currentLevel] = @()
+                }
+                $xpData[$charName][$serverName][$currentZone][$currentLevel] += $xpGain
             }
-
             # Check for level up
-            if ($line -match "You have gained a level! Welcome to level (\d+)!") {
+            elseif ($line -match "You have gained a level! Welcome to level (\d+)!") {
                 $currentLevel = [int]$matches[1]
             }
         }
+    }
+}
 
-        # Store zone XP data for the character at the current level
-        foreach ($zone in $zoneXpData.Keys) {
-            if (-not $xpData[$charName].Levels.ContainsKey($currentLevel)) {
-                $xpData[$charName].Levels[$currentLevel] = @{}
+# Output summary of xp amount from single kill at each level per zone per server. Ignore the character.
+foreach ($charName in $xpData.Keys) {
+    foreach ($serverName in $xpData[$charName].Keys) {
+        Write-Output "Server: $serverName"
+        foreach ($zone in $xpData[$charName][$serverName].Keys) {
+            Write-Output "  Zone: $zone"
+            foreach ($level in $xpData[$charName][$serverName][$zone].Keys) {
+                $xpGains = $xpData[$charName][$serverName][$zone][$level]
+                $averageXpGain = ($xpGains | Measure-Object -Average).Average
+                Write-Output "    Level: $level - Average XP Gain per Event: $([math]::Round($averageXpGain, 3))%"
             }
-            if (-not $xpData[$charName].Levels[$currentLevel].ContainsKey($zone)) {
-                $xpData[$charName].Levels[$currentLevel][$zone] = @{
-                    TotalXp = 0
-                    Entries = 0
-                }
-            }
-            $xpData[$charName].Levels[$currentLevel][$zone].TotalXp += $zoneXpData[$zone].TotalXp
-            $xpData[$charName].Levels[$currentLevel][$zone].Entries += $zoneXpData[$zone].Entries
         }
     }
 }
+
+
