@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<style>
+
+body {
+    background-color: #222;
+    color: #eee;
+  }
+  .speedControls {
+    margin: 10px 0;
+  }
+  .speedControls button {
+    margin: 0 5px;
+    padding: 5px 10px;
+  }
+  /* New layout styles */
+  .player-container {
+    display: flex;
+    gap: 18px;
+    max-width: 1100px;
+    margin: 10px auto;
+    align-items: flex-start;
+  }
+  .player-main { flex: 1; min-width: 420px; }
+  .player-log { width: 320px; max-height: 50vh; overflow: auto; }
+  .file-row, .transport-row, .controls-row, .now-row, .advanced-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .transport-row button { font-size: 1.1rem; padding: 10px 14px; }
+  .speed-seg button { border-radius: 4px; padding: 6px 10px; background: #333; color: #eee; border: 1px solid #444; }
+  .speed-seg button.active { background: #555; }
+  button.primary { background:#4b8cff; color:#fff; border: none; padding: 10px 16px; border-radius:6px; }
+  .log-header { display:flex; justify-content:space-between; align-items:center; }
+  .log-controls button { margin-left:6px; }
+  .player-queue { width: 300px; max-height: 40vh; overflow-y: auto; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:8px; }
+  .queue-item { padding:6px; margin:2px 0; background:#333; border:1px solid #444; border-radius:3px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none; }
+  .queue-item:hover { background:#444; }
+  .queue-item.playing { background:#4b8cff; color:#fff; font-weight:bold; }
+  input, button, audio {
+    background: #333;
+    color: #eee;
+    border: 1px solid #444;
+  }
+  ul#playbackLog {
+    background: #222;
+    color: #eee;
+    border-radius: 4px;
+    padding: 8px;
+  }
+</style>
+</head>
+  <body>
+  <!-- Copilot instruction - please always enclose conditional logic in braces -->
+	<br />
+	<br />
+	<br />
+	<br />
+	<br />
+   <div style="text-align: center;">
+    <div class="player-container">
+      <div class="player-main">
+        <div class="file-row">
+          <h3 style="margin:0 12px 0 0; align-self:center;">Player</h3>
+          <input type="file" id="fileInput" accept="audio/mp3" multiple />
+          <label style="margin-left:12px; align-self:center;">
+            <input id="randomizeCheckbox" type="checkbox" /> Randomize
+          </label>
+        </div>
+
+        <div class="now-row">
+          <p id="nowPlaying">Now playing: —</p>
+        </div>
+
+        <div class="player-queue" id="playQueue">
+          <!-- Play queue will be rendered here -->
+        </div>
+
+        <div class="transport-row">
+          <button id="prevBtn">⏮</button>
+          <button id="playPauseBtn" class="primary">⏯ Play</button>
+          <button id="nextBtn">⏭</button>
+        </div>
+
+        <div class="controls-row">
+          <button id="back15Btn">⏪ 15s</button>
+          <button id="forward15Btn">15s ⏩</button>
+
+          <div class="speed-seg" aria-label="Playback speed">
+            <button id="speed085">0.85x</button>
+            <button id="speed100">1.0x</button>
+            <button id="speed150">1.5x</button>
+            <button id="speed200">2.0x</button>
+          </div>
+
+          <button id="stopAfterBtn">Stop After This: Off</button>
+          <button id="toggleLoopBtn">Loop: On</button>
+        </div>
+
+        <div class="player-audio">
+          <audio id="audioPlayer" controls style="width:100%;"></audio>
+        </div>
+
+        <div class="advanced-row">
+          <p style="margin:6px 0 0 0;">Audiobooks folder:
+            <input id="audiobooksFolder" type="text" value="%USERPROFILE%\Audiobooks\" readonly style="width:300px; margin-left:8px;" onclick="this.select();" />
+          </p>
+        </div>
+      </div>
+
+      <aside class="player-log">
+        <div class="log-header">
+          <h3 id="playbackLogHeading">Playback Log</h3>
+          <div class="log-controls">
+            <button id="clearLog">Clear</button>
+            <button id="collapseLog">Collapse</button>
+          </div>
+        </div>
+        <ul id="playbackLog"></ul>
+      </aside>
+    </div>
+  </div>
+
+    <script>
+document.addEventListener('DOMContentLoaded', function() {
+  'use strict';
+  const fileInput = document.getElementById('fileInput');
+  const randomizeCheckbox = document.getElementById('randomizeCheckbox');
+      const audioPlayer = document.getElementById('audioPlayer');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const nowPlaying = document.getElementById('nowPlaying');
+      const playbackLog = document.getElementById('playbackLog');
+      var stopAfterCurrent = false;
+
+      // Browser detection: prefer Firefox vs Edge when deciding audiobook speed
+      const _ua = (navigator.userAgent || '').toLowerCase();
+      const isFirefox = _ua.indexOf('firefox') !== -1 && _ua.indexOf('seamonkey') === -1;
+      const isEdge = _ua.indexOf('edg/') !== -1 || _ua.indexOf('edge/') !== -1;
+
+      const stopAfterBtn = document.getElementById('stopAfterBtn');
+      stopAfterBtn.addEventListener('click', function() {
+        stopAfterCurrent = !stopAfterCurrent;
+        stopAfterBtn.textContent = `Stop After This: ${stopAfterCurrent ? 'On' : 'Off'}`;
+      });
+
+      // Play/Pause button
+      const playPauseBtn = document.getElementById('playPauseBtn');
+      playPauseBtn.addEventListener('click', function() {
+        if (audioPlayer.paused) {
+          audioPlayer.play();
+          this.textContent = '⏯ Pause';
+        } else {
+          audioPlayer.pause();
+          this.textContent = '⏯ Play';
+        }
+      });
+
+      // Speed control handlers and active state
+      function setActiveSpeed(activeId) {
+        ['speed085','speed100','speed150','speed200'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) btn.classList.toggle('active', id === activeId);
+        });
+      }
+      document.getElementById('speed085').addEventListener('click', () => { audioPlayer.playbackRate = 0.85; setActiveSpeed('speed085'); });
+      document.getElementById('speed100').addEventListener('click', () => { audioPlayer.playbackRate = 1.0; setActiveSpeed('speed100'); });
+      document.getElementById('speed150').addEventListener('click', () => { audioPlayer.playbackRate = 1.5; setActiveSpeed('speed150'); });
+      document.getElementById('speed200').addEventListener('click', () => { audioPlayer.playbackRate = 2.0; setActiveSpeed('speed200'); });
+      // default active speed
+      setActiveSpeed('speed100');
+
+      // Loop button
+      let loopEnabled = false;
+      const toggleLoopBtn = document.getElementById('toggleLoopBtn');
+      toggleLoopBtn.textContent = 'Loop: Off';
+      toggleLoopBtn.addEventListener('click', function() {
+        loopEnabled = !loopEnabled;
+        this.textContent = `Loop: ${loopEnabled ? 'On' : 'Off'}`;
+      });
+
+      // Log controls: clear and collapse
+      const clearLogBtn = document.getElementById('clearLog');
+      if (clearLogBtn) clearLogBtn.addEventListener('click', () => { playbackLog.innerHTML = ''; });
+      const collapseLogBtn = document.getElementById('collapseLog');
+      if (collapseLogBtn) collapseLogBtn.addEventListener('click', () => {
+        const log = document.querySelector('.player-log');
+        if (log) {
+          const hidden = log.style.display === 'none';
+          log.style.display = hidden ? 'block' : 'none';
+          collapseLogBtn.textContent = hidden ? 'Collapse' : 'Expand';
+        }
+      });
+
+      document.getElementById('back15Btn').addEventListener('click', function() {
+        audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 15);
+      });
+
+      document.getElementById('forward15Btn').addEventListener('click', function() {
+        audioPlayer.currentTime = Math.min(audioPlayer.duration || 0, audioPlayer.currentTime + 15);
+      });
+
+
+      let files = [];
+      let currentIndex = 0;
+
+      // Extract metadata from audio file using Web Audio API and a simple ID3 parser
+      async function getAudioMetadata(file) {
+        return new Promise((resolve) => {
+          // Try to read ID3v2 tags from the MP3 file
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const arrayBuffer = e.target.result;
+              const view = new Uint8Array(arrayBuffer);
+              
+              // Check for ID3v2 header (first 3 bytes should be "ID3")
+              if (view[0] === 0x49 && view[1] === 0x44 && view[2] === 0x33) {
+                // ID3v2 found; parse it (simplified)
+                let title = '', artist = '';
+                
+                // Skip ID3 header (10 bytes) and parse frames
+                let offset = 10;
+                const maxOffset = Math.min(arrayBuffer.byteLength, 40000); // Read first ~40KB
+                
+                while (offset < maxOffset - 10) {
+                  // Frame IDs are 4 bytes (TIT2=title, TPE1=artist in ID3v2.3+)
+                  const frameId = String.fromCharCode(view[offset], view[offset+1], view[offset+2], view[offset+3]);
+                  const frameSize = (view[offset+4] << 21) | (view[offset+5] << 14) | (view[offset+6] << 7) | view[offset+7];
+                  const frameData = new Uint8Array(arrayBuffer, offset + 10, Math.min(frameSize, 500));
+                  const frameText = new TextDecoder('utf-8', {fatal: false}).decode(frameData).replace(/\0/g, '');
+                  
+                  if (frameId === 'TIT2' && !title) {
+                    title = frameText.trim();
+                  } else if (frameId === 'TPE1' && !artist) {
+                    artist = frameText.trim();
+                  }
+                  
+                  offset += 10 + frameSize;
+                  if (title && artist) break;
+                }
+                
+                resolve({ title: title || file.name, artist: artist || '' });
+              } else {
+                // No ID3 tag; fallback to filename
+                resolve({ title: file.name, artist: '' });
+              }
+            } catch (err) {
+              resolve({ title: file.name, artist: '' });
+            }
+          };
+          reader.onerror = () => resolve({ title: file.name, artist: '' });
+          reader.readAsArrayBuffer(file.slice(0, 40000));
+        });
+      }
+
+      // Render the play queue
+      function renderQueue() {
+        const queueDiv = document.getElementById('playQueue');
+        if (!queueDiv) {
+          return;
+        }
+        queueDiv.innerHTML = '';
+        files.forEach((file, idx) => {
+          const item = document.createElement('div');
+          item.className = 'queue-item';
+          item.draggable = true;
+          item.dataset.index = idx;
+          
+          if (idx === currentIndex) {
+            item.classList.add('playing');
+          }
+          
+          // Use cached metadata if available, otherwise show filename
+          const metadata = file._metadata || { title: file.name, artist: '' };
+          const displayText = metadata.artist ? `${metadata.title} - ${metadata.artist}` : metadata.title;
+          item.textContent = `${idx + 1}. ${displayText}`;
+          item.title = displayText; // Tooltip for truncated text
+          
+          item.addEventListener('click', () => {
+            currentIndex = idx;
+            playFile(currentIndex);
+          });
+          
+          // Drag-drop handlers
+          item.addEventListener('dragstart', (e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', idx);
+            item.style.opacity = '0.5';
+          });
+          
+          item.addEventListener('dragend', (e) => {
+            item.style.opacity = '1';
+          });
+          
+          item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            item.style.borderTop = '2px solid #4b8cff';
+          });
+          
+          item.addEventListener('dragleave', (e) => {
+            item.style.borderTop = 'none';
+          });
+          
+          item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            item.style.borderTop = 'none';
+            const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+            if (fromIdx !== idx) {
+              // Reorder: remove from source, insert at target
+              const [movedFile] = files.splice(fromIdx, 1);
+              const toIdx = fromIdx < idx ? idx - 1 : idx;
+              files.splice(toIdx, 0, movedFile);
+              
+              // Update currentIndex if we moved the playing track
+              if (currentIndex === fromIdx) {
+                currentIndex = toIdx;
+              } else if (fromIdx < currentIndex && toIdx >= currentIndex) {
+                currentIndex--;
+              } else if (fromIdx > currentIndex && toIdx < currentIndex) {
+                currentIndex++;
+              }
+              
+              renderQueue();
+            }
+          });
+          
+          queueDiv.appendChild(item);
+        });
+      }
+
+      // Fisher-Yates in-place shuffle; returns the same array for convenience
+      function shuffleArray(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = arr[i];
+          arr[i] = arr[j];
+          arr[j] = tmp;
+        }
+        return arr;
+      }
+
+      function playFile(index) {
+        if (files.length === 0) {
+          return;
+        }
+        const file = files[index];
+        audioPlayer.src = URL.createObjectURL(file);
+        // Wonkiness lead to using browser-based decision when applicable (user runs audiobooks in Firefox)
+        audioPlayer.playbackRate = 0.85;
+        setActiveSpeed('speed085');
+        if (isEdge) {
+          // mp3s in Edge, with it's bluetooth interaction disabled so I can play music at normal speed 'under' the audiobook that's in firefox
+          audioPlayer.playbackRate = 1.0;
+          setActiveSpeed('speed100');
+        }
+        audioPlayer.play();
+        nowPlaying.textContent = `Now playing: ${file.name}`;
+      }
+
+      function logPlayback(fileName) {
+        const now = new Date();
+        const timestamp = now.toLocaleString();
+        const li = document.createElement('li');
+        li.textContent = `Finished: ${fileName} at ${timestamp}`;
+        playbackLog.appendChild(li);
+      }
+
+      fileInput.addEventListener('change', function() {
+        files = Array.from(this.files);
+        // If the Randomize checkbox is checked, shuffle the file order
+        if (randomizeCheckbox && randomizeCheckbox.checked) {
+          shuffleArray(files);
+          // Update heading to show that the list was shuffled
+          const heading = document.getElementById('playbackLogHeading');
+          if (heading) {
+            heading.textContent = 'Shuffled Playback Log';
+          }
+        }
+        // If not shuffled, ensure heading reads the default
+        if (!(randomizeCheckbox && randomizeCheckbox.checked)) {
+          const heading = document.getElementById('playbackLogHeading');
+          if (heading) {
+            heading.textContent = 'Playback Log';
+          }
+        }
+        currentIndex = 0;
+        playbackLog.innerHTML = '';
+        
+        // Extract metadata for all files and render queue once ready
+        Promise.all(files.map(async (file) => {
+          file._metadata = await getAudioMetadata(file);
+          return file;
+        })).then(() => {
+          renderQueue();
+          playFile(currentIndex);
+        });
+      });
+
+      // Handle end of track: log and advance/loop/stop as appropriate
+      audioPlayer.addEventListener('ended', function() {
+        if (files.length === 0) {
+          return;
+        }
+        logPlayback(files[currentIndex].name);
+        if (stopAfterCurrent) {
+          stopAfterCurrent = false;
+          if (stopAfterBtn) {
+            stopAfterBtn.textContent = 'Stop After This: Off';
+          }
+          nowPlaying.textContent = 'Playback stopped after current file.';
+          audioPlayer.src = '';
+          return;
+        }
+
+        // If loop is enabled, reorder queue so that:
+        // - files[0] == last-played (so you can go back)
+        // - files[1] == currently playing
+        // - the rest follow in their natural order
+        if (loopEnabled) {
+          // Avoid weird behavior for very small playlists
+          if (files.length === 1) {
+            // Single file: just replay it
+            currentIndex = 0;
+            playFile(currentIndex);
+            renderQueue();
+          } else {
+            const finishedIndex = currentIndex;
+            const len = files.length;
+            const nextIdx = (finishedIndex + 1) % len;
+            const finished = files[finishedIndex];
+            const nextFile = files[nextIdx];
+
+            // Build remaining array starting after nextIdx up to before finishedIndex
+            const remaining = [];
+            for (let i = (nextIdx + 1) % len; i !== finishedIndex; i = (i + 1) % len) {
+              remaining.push(files[i]);
+            }
+
+            // New order: [last-played, currently-playing, ...remaining]
+            files = [finished, nextFile, ...remaining];
+            currentIndex = 1; // currently-playing sits at position 1
+            playFile(currentIndex);
+            renderQueue();
+          }
+        } else if (currentIndex + 1 < files.length) {
+          currentIndex++;
+          playFile(currentIndex);
+          renderQueue();
+        } else {
+          nowPlaying.textContent = 'Reached end of playlist.';
+          audioPlayer.src = '';
+        }
+
+        // Auto-collapse play history if it gets large
+        const logEntries = playbackLog.children.length;
+        if (logEntries > 10) {
+          const logDiv = document.querySelector('.player-log');
+          if (logDiv && logDiv.style.display !== 'none') {
+            logDiv.style.display = 'none';
+            const collapseBtn = document.getElementById('collapseLog');
+            if (collapseBtn) {
+              collapseBtn.textContent = 'Expand';
+            }
+          }
+        }
+      });
+
+      prevBtn.addEventListener('click', function() {
+        if (files.length === 0) {
+          return;
+        }
+        currentIndex = (currentIndex - 1 + files.length) % files.length;
+        playFile(currentIndex);
+        renderQueue();
+      });
+
+      nextBtn.addEventListener('click', function() {
+        if (files.length === 0) {
+          return;
+        }
+        currentIndex = (currentIndex + 1) % files.length;
+        playFile(currentIndex);
+        renderQueue();
+      });
+
+      // Media Session API integration for Bluetooth/media keys
+      if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+              title: 'Audio Player',
+              artist: 'Web Player',
+              album: 'Playlist'
+          });
+
+      navigator.mediaSession.setActionHandler('previoustrack', function() {
+        if (files.length === 0) {
+          return;
+        }
+        currentIndex = (currentIndex - 1 + files.length) % files.length;
+        playFile(currentIndex);
+        renderQueue();
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', function() {
+        if (files.length === 0) {
+          return;
+        }
+        currentIndex = (currentIndex + 1) % files.length;
+        playFile(currentIndex);
+        renderQueue();
+      });
+
+          // Optional: update metadata when track changes
+          function updateMetadata(file) {
+              navigator.mediaSession.metadata = new MediaMetadata({
+                  title: file.name,
+                  artist: 'Audio Player',
+                  album: 'Current Playlist'
+              });
+          }
+
+          // Patch playFile to update metadata
+      const originalPlayFile = playFile;
+      playFile = function(index) {
+        if (files.length === 0) {
+          return;
+        }
+        updateMetadata(files[index]);
+        originalPlayFile(index);
+        renderQueue();
+      };
+      }
+});
+    </script>
+  </body>
+</html>
