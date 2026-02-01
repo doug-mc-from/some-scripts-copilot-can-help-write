@@ -34,9 +34,22 @@ body {
   .log-header { display:flex; justify-content:space-between; align-items:center; }
   .log-controls button { margin-left:6px; }
   .player-queue { width: 300px; max-height: 40vh; overflow-y: auto; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:8px; }
-  .queue-item { padding:6px; margin:2px 0; background:#333; border:1px solid #444; border-radius:3px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none; }
+  .queue-item { padding:6px; margin:2px 0; background:#333; border:1px solid #444; border-radius:3px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none; position:relative; padding-right:28px; }
   .queue-item:hover { background:#444; }
   .queue-item.playing { background:#4b8cff; color:#fff; font-weight:bold; }
+  .remove-btn {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background: transparent;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 0.9rem;
+    line-height: 1;
+  }
+  .remove-btn:hover { color: #fff; }
   input, button, audio {
     background: #333;
     color: #eee;
@@ -69,7 +82,7 @@ body {
         </div>
 
         <div class="now-row">
-          <p id="nowPlaying">Now playing: —</p>
+          <p id="nowPlaying">Now playing: ��</p>
         </div>
 
         <div class="player-queue" id="playQueue">
@@ -274,8 +287,52 @@ document.addEventListener('DOMContentLoaded', function() {
           // Use cached metadata if available, otherwise show filename
           const metadata = file._metadata || { title: file.name, artist: '' };
           const displayText = metadata.artist ? `${metadata.title} - ${metadata.artist}` : metadata.title;
-          item.textContent = `${idx + 1}. ${displayText}`;
-          item.title = displayText; // Tooltip for truncated text
+
+          // Label span (so the remove button can be appended without wiping text)
+          const labelSpan = document.createElement('span');
+          labelSpan.textContent = `${idx + 1}. ${displayText}`;
+          labelSpan.title = displayText; // Tooltip for truncated text
+          item.appendChild(labelSpan);
+
+          // Remove button (upper-right 'x')
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'remove-btn';
+          removeBtn.setAttribute('aria-label', 'Remove from playlist');
+          removeBtn.title = 'Remove';
+          removeBtn.textContent = '✖';
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // prevent triggering the play click
+            const idxToRemove = parseInt(item.dataset.index, 10);
+            if (isNaN(idxToRemove)) return;
+            
+            // Remove the file from the array
+            files.splice(idxToRemove, 1);
+
+            // If the playlist is now empty, stop playback and clear UI
+            if (files.length === 0) {
+              audioPlayer.pause();
+              audioPlayer.src = '';
+              currentIndex = 0;
+              nowPlaying.textContent = 'Now playing: —';
+              renderQueue();
+              return;
+            }
+
+            // Adjust currentIndex appropriately
+            if (idxToRemove < currentIndex) {
+              // Removed an earlier item: shift current index back
+              currentIndex--;
+            } else if (idxToRemove === currentIndex) {
+              // Removed the currently playing item: play the item that shifted into this index
+              if (currentIndex >= files.length) {
+                currentIndex = files.length - 1;
+              }
+              playFile(currentIndex);
+            }
+
+            renderQueue();
+          });
+          item.appendChild(removeBtn);
           
           item.addEventListener('click', () => {
             currentIndex = idx;
