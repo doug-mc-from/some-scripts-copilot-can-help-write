@@ -26,7 +26,7 @@ body {
   }
   .player-main { flex: 1; min-width: 420px; }
   .player-log { width: 320px; max-height: 50vh; overflow: auto; }
-  .file-row, .transport-row, .controls-row, .now-row, .advanced-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .file-row, .transport-row, .controls-row, .now-row, .advanced-row, .timer-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
   .transport-row button { font-size: 1.1rem; padding: 10px 14px; }
   .speed-seg button { border-radius: 4px; padding: 6px 10px; background: #333; color: #eee; border: 1px solid #444; }
   .speed-seg button.active { background: #555; }
@@ -34,7 +34,7 @@ body {
   .log-header { display:flex; justify-content:space-between; align-items:center; }
   .log-controls button { margin-left:6px; }
   .player-queue { width: 300px; max-height: 40vh; overflow-y: auto; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:8px; }
-  .queue-item { padding:6px; margin:2px 0; background:#333; border:1px solid #444; border-radius:3px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none; position:relative; padding-right:28px; }
+  .queue-item { padding:6px; margin:2px 0; background:#333; border:1px solid #444; border-radius:3px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none;}
   .queue-item:hover { background:#444; }
   .queue-item.playing { background:#4b8cff; color:#fff; font-weight:bold; }
   .remove-btn {
@@ -61,6 +61,26 @@ body {
     border-radius: 4px;
     padding: 8px;
   }
+  .timer-row {
+    align-items: center;
+    gap: 10px;
+  }
+  .timer-row input {
+    width: 80px;
+    padding: 6px 8px;
+  }
+  .timer-row label {
+    margin: 0;
+  }
+  #timerDisplay {
+    min-width: 60px;
+    padding: 4px 8px;
+    background: #333;
+    border: 1px solid #444;
+    border-radius: 4px;
+    text-align: center;
+    font-family: monospace;
+  }
 </style>
 </head>
   <body>
@@ -70,7 +90,7 @@ body {
 	<br />
 	<br />
 	<br />
-   <div style="text-align: center;">
+    <div style="text-align: center;">
     <div class="player-container">
       <div class="player-main">
         <div class="file-row">
@@ -82,7 +102,7 @@ body {
         </div>
 
         <div class="now-row">
-          <p id="nowPlaying">Now playing: ��</p>
+          <p id="nowPlaying">Now playing: —</p>
         </div>
 
         <div class="player-queue" id="playQueue">
@@ -108,6 +128,14 @@ body {
 
           <button id="stopAfterBtn">Stop After This: Off</button>
           <button id="toggleLoopBtn">Loop: On</button>
+        </div>
+
+        <div class="timer-row">
+          <label for="sleepTimerInput">Sleep Timer:</label>
+          <input type="number" id="sleepTimerInput" min="1" max="999" value="30" placeholder="Minutes" />
+          <button id="startTimerBtn">Start Timer</button>
+          <button id="cancelTimerBtn" style="display: none;">Cancel Timer</button>
+          <div id="timerDisplay" style="display: none;">—</div>
         </div>
 
         <div class="player-audio">
@@ -146,6 +174,15 @@ document.addEventListener('DOMContentLoaded', function() {
       const playbackLog = document.getElementById('playbackLog');
       var stopAfterCurrent = false;
 
+      // Sleep timer variables
+      let sleepTimerTimeout = null;
+      let sleepTimerInterval = null;
+      let sleepTimerEndTime = null;
+      const startTimerBtn = document.getElementById('startTimerBtn');
+      const cancelTimerBtn = document.getElementById('cancelTimerBtn');
+      const sleepTimerInput = document.getElementById('sleepTimerInput');
+      const timerDisplay = document.getElementById('timerDisplay');
+
       // Browser detection: prefer Firefox vs Edge when deciding audiobook speed
       const _ua = (navigator.userAgent || '').toLowerCase();
       const isFirefox = _ua.indexOf('firefox') !== -1 && _ua.indexOf('seamonkey') === -1;
@@ -156,6 +193,83 @@ document.addEventListener('DOMContentLoaded', function() {
         stopAfterCurrent = !stopAfterCurrent;
         stopAfterBtn.textContent = `Stop After This: ${stopAfterCurrent ? 'On' : 'Off'}`;
       });
+
+      // Sleep Timer Functions
+      function updateTimerDisplay() {
+        if (sleepTimerEndTime) {
+          const now = Date.now();
+          const remaining = Math.max(0, sleepTimerEndTime - now);
+          const minutes = Math.floor(remaining / 60000);
+          const seconds = Math.floor((remaining % 60000) / 1000);
+          timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+      }
+
+      function startSleepTimer() {
+        const minutes = parseInt(sleepTimerInput.value, 10);
+        if (isNaN(minutes) || minutes < 1) {
+          alert('Please enter a valid number of minutes (minimum 1)');
+          return;
+        }
+
+        // Cancel any existing timer
+        if (sleepTimerTimeout) {
+          clearTimeout(sleepTimerTimeout);
+        }
+        if (sleepTimerInterval) {
+          clearInterval(sleepTimerInterval);
+        }
+
+        sleepTimerEndTime = Date.now() + (minutes * 60 * 1000);
+        
+        // Update UI
+        startTimerBtn.style.display = 'none';
+        sleepTimerInput.style.display = 'none';
+        cancelTimerBtn.style.display = 'inline-block';
+        timerDisplay.style.display = 'inline-block';
+        
+        // Update display immediately
+        updateTimerDisplay();
+        
+        // Update timer display every 500ms
+        sleepTimerInterval = setInterval(updateTimerDisplay, 500);
+
+        // Pause playback after the specified time
+        sleepTimerTimeout = setTimeout(function() {
+          audioPlayer.pause();
+          playPauseBtn.textContent = '⏯ Play';
+          clearInterval(sleepTimerInterval);
+          sleepTimerEndTime = null;
+          timerDisplay.textContent = '—';
+          timerDisplay.style.display = 'none';
+          startTimerBtn.style.display = 'inline-block';
+          sleepTimerInput.style.display = 'inline-block';
+          cancelTimerBtn.style.display = 'none';
+          nowPlaying.textContent = 'Playback paused by sleep timer.';
+        }, minutes * 60 * 1000);
+      }
+
+      function cancelSleepTimer() {
+        if (sleepTimerTimeout) {
+          clearTimeout(sleepTimerTimeout);
+          sleepTimerTimeout = null;
+        }
+        if (sleepTimerInterval) {
+          clearInterval(sleepTimerInterval);
+          sleepTimerInterval = null;
+        }
+        sleepTimerEndTime = null;
+        
+        // Reset UI
+        timerDisplay.textContent = '—';
+        timerDisplay.style.display = 'none';
+        startTimerBtn.style.display = 'inline-block';
+        sleepTimerInput.style.display = 'inline-block';
+        cancelTimerBtn.style.display = 'none';
+      }
+
+      startTimerBtn.addEventListener('click', startSleepTimer);
+      cancelTimerBtn.addEventListener('click', cancelSleepTimer);
 
       // Play/Pause button
       const playPauseBtn = document.getElementById('playPauseBtn');
@@ -550,44 +664,44 @@ document.addEventListener('DOMContentLoaded', function() {
               album: 'Playlist'
           });
 
-      navigator.mediaSession.setActionHandler('previoustrack', function() {
-        if (files.length === 0) {
-          return;
-        }
-        currentIndex = (currentIndex - 1 + files.length) % files.length;
-        playFile(currentIndex);
-        renderQueue();
-      });
+       navigator.mediaSession.setActionHandler('previoustrack', function() {
+         if (files.length === 0) {
+           return;
+         }
+         currentIndex = (currentIndex - 1 + files.length) % files.length;
+         playFile(currentIndex);
+         renderQueue();
+       });
 
-      navigator.mediaSession.setActionHandler('nexttrack', function() {
-        if (files.length === 0) {
-          return;
-        }
-        currentIndex = (currentIndex + 1) % files.length;
-        playFile(currentIndex);
-        renderQueue();
-      });
+       navigator.mediaSession.setActionHandler('nexttrack', function() {
+         if (files.length === 0) {
+           return;
+         }
+         currentIndex = (currentIndex + 1) % files.length;
+         playFile(currentIndex);
+         renderQueue();
+       });
 
-          // Optional: update metadata when track changes
-          function updateMetadata(file) {
-              navigator.mediaSession.metadata = new MediaMetadata({
-                  title: file.name,
-                  artist: 'Audio Player',
-                  album: 'Current Playlist'
-              });
-          }
+           // Optional: update metadata when track changes
+           function updateMetadata(file) {
+               navigator.mediaSession.metadata = new MediaMetadata({
+                   title: file.name,
+                   artist: 'Audio Player',
+                   album: 'Current Playlist'
+               });
+           }
 
-          // Patch playFile to update metadata
-      const originalPlayFile = playFile;
-      playFile = function(index) {
-        if (files.length === 0) {
-          return;
-        }
-        updateMetadata(files[index]);
-        originalPlayFile(index);
-        renderQueue();
-      };
-      }
+           // Patch playFile to update metadata
+       const originalPlayFile = playFile;
+       playFile = function(index) {
+         if (files.length === 0) {
+           return;
+         }
+         updateMetadata(files[index]);
+         originalPlayFile(index);
+         renderQueue();
+       };
+       }
 });
     </script>
   </body>
