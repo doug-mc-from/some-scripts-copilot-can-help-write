@@ -132,7 +132,7 @@ body {
 
         <div class="timer-row">
           <label for="sleepTimerInput">Sleep Timer:</label>
-          <input type="number" id="sleepTimerInput" min="1" max="999" value="30" placeholder="Minutes" />
+          <input type="number" id="sleepTimerInput" min="1" max="999" value="90" placeholder="Minutes" />
           <button id="startTimerBtn">Start Timer</button>
           <button id="cancelTimerBtn" style="display: none;">Cancel Timer</button>
           <div id="timerDisplay" style="display: none;">—</div>
@@ -569,74 +569,75 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       });
 
-      // Handle end of track: log and advance/loop/stop as appropriate
-      audioPlayer.addEventListener('ended', function() {
-        if (files.length === 0) {
-          return;
-        }
-        logPlayback(files[currentIndex].name);
-        if (stopAfterCurrent) {
-          stopAfterCurrent = false;
-          if (stopAfterBtn) {
-            stopAfterBtn.textContent = 'Stop After This: Off';
-          }
-          nowPlaying.textContent = 'Playback stopped after current file.';
-          audioPlayer.src = '';
-          return;
-        }
+       // Handle end of track: log and advance/loop/stop as appropriate
+       audioPlayer.addEventListener('ended', function() {
+         if (files.length === 0) {
+           return;
+         }
+         const finishedFileName = files[currentIndex].name;  // Capture BEFORE any reordering
+         logPlayback(finishedFileName);
+         if (stopAfterCurrent) {
+           stopAfterCurrent = false;
+           if (stopAfterBtn) {
+             stopAfterBtn.textContent = 'Stop After This: Off';
+           }
+           nowPlaying.textContent = 'Playback stopped after current file.';
+           audioPlayer.src = '';
+           return;
+         }
 
-        // If loop is enabled, reorder queue so that:
-        // - files[0] == last-played (so you can go back)
-        // - files[1] == currently playing
-        // - the rest follow in their natural order
-        if (loopEnabled) {
-          // Avoid weird behavior for very small playlists
-          if (files.length === 1) {
-            // Single file: just replay it
-            currentIndex = 0;
-            playFile(currentIndex);
-            renderQueue();
-          } else {
-            const finishedIndex = currentIndex;
-            const len = files.length;
-            const nextIdx = (finishedIndex + 1) % len;
-            const finished = files[finishedIndex];
-            const nextFile = files[nextIdx];
+         // If loop is enabled, reorder queue so that:
+         // - files[0] == last-played (so you can go back)
+         // - files[1] == currently playing
+         // - the rest follow in their natural order
+         if (loopEnabled) {
+           // Avoid weird behavior for very small playlists
+           if (files.length === 1) {
+             // Single file: just replay it
+             currentIndex = 0;
+             playFile(currentIndex);
+             renderQueue();
+           } else {
+             const finishedIndex = currentIndex;
+             const len = files.length;
+             const nextIdx = (finishedIndex + 1) % len;
+             const finished = files[finishedIndex];
+             const nextFile = files[nextIdx];
 
-            // Build remaining array starting after nextIdx up to before finishedIndex
-            const remaining = [];
-            for (let i = (nextIdx + 1) % len; i !== finishedIndex; i = (i + 1) % len) {
-              remaining.push(files[i]);
-            }
+             // Build remaining array starting after nextIdx up to before finishedIndex
+             const remaining = [];
+             for (let i = (nextIdx + 1) % len; i !== finishedIndex; i = (i + 1) % len) {
+               remaining.push(files[i]);
+             }
 
-            // New order: [last-played, currently-playing, ...remaining]
-            files = [finished, nextFile, ...remaining];
-            currentIndex = 1; // currently-playing sits at position 1
-            playFile(currentIndex);
-            renderQueue();
-          }
-        } else if (currentIndex + 1 < files.length) {
-          currentIndex++;
-          playFile(currentIndex);
-          renderQueue();
-        } else {
-          nowPlaying.textContent = 'Reached end of playlist.';
-          audioPlayer.src = '';
-        }
+             // New order: [last-played, currently-playing, ...remaining]
+             files = [finished, nextFile, ...remaining];
+             currentIndex = 1; // currently-playing sits at position 1
+             playFile(currentIndex);
+             renderQueue();
+           }
+         } else if (currentIndex + 1 < files.length) {
+           currentIndex++;
+           playFile(currentIndex);
+           renderQueue();
+         } else {
+           nowPlaying.textContent = 'Reached end of playlist.';
+           audioPlayer.src = '';
+         }
 
-        // Auto-collapse play history if it gets large
-        const logEntries = playbackLog.children.length;
-        if (logEntries > 10) {
-          const logDiv = document.querySelector('.player-log');
-          if (logDiv && logDiv.style.display !== 'none') {
-            logDiv.style.display = 'none';
-            const collapseBtn = document.getElementById('collapseLog');
-            if (collapseBtn) {
-              collapseBtn.textContent = 'Expand';
-            }
-          }
-        }
-      });
+         // Auto-collapse play history if it gets large
+         const logEntries = playbackLog.children.length;
+         if (logEntries > 10) {
+           const logDiv = document.querySelector('.player-log');
+           if (logDiv && logDiv.style.display !== 'none') {
+             logDiv.style.display = 'none';
+             const collapseBtn = document.getElementById('collapseLog');
+             if (collapseBtn) {
+               collapseBtn.textContent = 'Expand';
+             }
+           }
+         }
+       });
 
       prevBtn.addEventListener('click', function() {
         if (files.length === 0) {
