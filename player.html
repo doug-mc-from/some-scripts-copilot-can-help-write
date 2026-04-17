@@ -34,7 +34,7 @@ body {
   .log-header { display:flex; justify-content:space-between; align-items:center; }
   .log-controls button { margin-left:6px; }
   .player-queue { width: 300px; max-height: 40vh; overflow-y: auto; background:#1a1a1a; border:1px solid #444; border-radius:4px; padding:8px; }
-  .queue-item { padding:6px; margin:2px 0; background:#333; border:1px solid #444; border-radius:3px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none;}
+  .queue-item { position: relative; padding:6px; margin:2px 0; background:#333; border:1px solid #444; border-radius:3px; cursor:pointer; white-space:nowrap; overflow:visible; text-overflow:ellipsis; user-select:none;}
   .queue-item:hover { background:#444; }
   .queue-item.playing { background:#4b8cff; color:#fff; font-weight:bold; }
   .remove-btn {
