@@ -120,7 +120,7 @@ body {
           <button id="forward15Btn">15s ⏩</button>
 
           <div class="speed-seg" aria-label="Playback speed">
-            <button id="speed085">0.85x</button>
+            <button id="speed075">0.75x</button>
             <button id="speed100">1.0x</button>
             <button id="speed150">1.5x</button>
             <button id="speed200">2.0x</button>
@@ -285,22 +285,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Speed control handlers and active state
       function setActiveSpeed(activeId) {
-        ['speed085','speed100','speed150','speed200'].forEach(id => {
+        ['speed075','speed100','speed150','speed200'].forEach(id => {
           const btn = document.getElementById(id);
           if (btn) btn.classList.toggle('active', id === activeId);
         });
       }
-      document.getElementById('speed085').addEventListener('click', () => { audioPlayer.playbackRate = 0.85; setActiveSpeed('speed085'); });
+      document.getElementById('speed075').addEventListener('click', () => { audioPlayer.playbackRate = 0.75; setActiveSpeed('speed075'); });
       document.getElementById('speed100').addEventListener('click', () => { audioPlayer.playbackRate = 1.0; setActiveSpeed('speed100'); });
       document.getElementById('speed150').addEventListener('click', () => { audioPlayer.playbackRate = 1.5; setActiveSpeed('speed150'); });
       document.getElementById('speed200').addEventListener('click', () => { audioPlayer.playbackRate = 2.0; setActiveSpeed('speed200'); });
       // default active speed
       setActiveSpeed('speed100');
 
+      // Edge-specific default startup state
+      randomizeCheckbox.checked = isEdge;
+
       // Loop button
-      let loopEnabled = false;
+      let loopEnabled = isEdge;
       const toggleLoopBtn = document.getElementById('toggleLoopBtn');
-      toggleLoopBtn.textContent = 'Loop: Off';
+      toggleLoopBtn.textContent = `Loop: ${loopEnabled ? 'On' : 'Off'}`;
       toggleLoopBtn.addEventListener('click', function() {
         loopEnabled = !loopEnabled;
         this.textContent = `Loop: ${loopEnabled ? 'On' : 'Off'}`;
@@ -318,6 +321,13 @@ document.addEventListener('DOMContentLoaded', function() {
           collapseLogBtn.textContent = hidden ? 'Collapse' : 'Expand';
         }
       });
+      const logPanel = document.querySelector('.player-log');
+      if (isEdge && logPanel) {
+        logPanel.style.display = 'none';
+        if (collapseLogBtn) {
+          collapseLogBtn.textContent = 'Expand';
+        }
+      }
 
       document.getElementById('back15Btn').addEventListener('click', function() {
         audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 15);
@@ -519,8 +529,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const file = files[index];
         audioPlayer.src = URL.createObjectURL(file);
         // Wonkiness lead to using browser-based decision when applicable (user runs audiobooks in Firefox)
-        audioPlayer.playbackRate = 0.85;
-        setActiveSpeed('speed085');
+        audioPlayer.playbackRate = 0.75;
+        setActiveSpeed('speed075');
         if (isEdge) {
           // mp3s in Edge, with it's bluetooth interaction disabled so I can play music at normal speed 'under' the audiobook that's in firefox
           audioPlayer.playbackRate = 1.0;
@@ -539,27 +549,42 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       fileInput.addEventListener('change', function() {
-        files = Array.from(this.files);
-        // If the Randomize checkbox is checked, shuffle the file order
-        if (randomizeCheckbox && randomizeCheckbox.checked) {
-          shuffleArray(files);
-          // Update heading to show that the list was shuffled
+        const selectedFiles = Array.from(this.files);
+        const shouldRandomize = !!(randomizeCheckbox && randomizeCheckbox.checked);
+
+        if (files.length > 0) {
+          const filesToAppend = shouldRandomize ? shuffleArray(selectedFiles) : selectedFiles;
+
+          Promise.all(filesToAppend.map(async (file) => {
+            file._metadata = await getAudioMetadata(file);
+            return file;
+          })).then(() => {
+            files.push(...filesToAppend);
+            renderQueue();
+          });
+
+          this.value = '';
+          return;
+        }
+
+        // Empty queue: preserve the existing fresh-load behavior.
+        files = shouldRandomize ? shuffleArray(selectedFiles) : selectedFiles;
+
+        if (shouldRandomize) {
           const heading = document.getElementById('playbackLogHeading');
           if (heading) {
             heading.textContent = 'Shuffled Playback Log';
           }
-        }
-        // If not shuffled, ensure heading reads the default
-        if (!(randomizeCheckbox && randomizeCheckbox.checked)) {
+        } else {
           const heading = document.getElementById('playbackLogHeading');
           if (heading) {
             heading.textContent = 'Playback Log';
           }
         }
+
         currentIndex = 0;
         playbackLog.innerHTML = '';
-        
-        // Extract metadata for all files and render queue once ready
+
         Promise.all(files.map(async (file) => {
           file._metadata = await getAudioMetadata(file);
           return file;
@@ -567,6 +592,8 @@ document.addEventListener('DOMContentLoaded', function() {
           renderQueue();
           playFile(currentIndex);
         });
+
+        this.value = '';
       });
 
        // Handle end of track: log and advance/loop/stop as appropriate
